@@ -1,0 +1,13 @@
+
+# vim swapfiles:
+.*.swp
+
+
+# Python stuff
+*.pyc
+
+
+# C/C++ stuff
+dualMe
+*.o
+
