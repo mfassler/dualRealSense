@@ -28,8 +28,8 @@ cv::Mat depth_image[2];
 cv::Mat out_image;
 
 
-//#define USE_NETWORK_DISPLAY
-#define USE_LOCAL_DISPLAY
+#define USE_NETWORK_DISPLAY
+//#define USE_LOCAL_DISPLAY
 
 
 double gettimeofday_as_double() {
@@ -93,6 +93,9 @@ int main(int argc, char* argv[]) {
 	std::vector<int> params;
 	params.push_back(cv::IMWRITE_JPEG_QUALITY);
 	params.push_back(30);
+
+	UdpSender scanlineSender("192.168.100.103", 3125);
+	unsigned char scanOut[ 848 * 2 * 2 ];  // will be larger than ethernet MTU  :-( ...
 
 	rs2::pipeline pipeline_0;
 	rs2::pipeline pipeline_1;
@@ -189,6 +192,20 @@ int main(int argc, char* argv[]) {
 			t2.join();
 #endif
 			cv::hconcat(color_image_0a, color_image[1], out_image);
+
+			// http://longstryder.com/2014/07/which-way-of-accessing-pixels-in-opencv-is-the-fastest/
+			// Get a scan of the very middle row (the horizon, in theory)
+			const unsigned char *ptr;
+			ptr = depth_image_0a.ptr(240);
+			for (int col=0; col < 848*2; ++col) {
+				scanOut[col] = ptr[col];
+			}
+			ptr = depth_image[1].ptr(240);
+			for (int col=0; col < 848*2; ++col) {
+				scanOut[col+848*2] = ptr[col];
+			}
+			scanlineSender.sendData(scanOut, 848*2*2);
+
 
 #ifdef USE_LOCAL_DISPLAY
 			cv::imshow("RealSense", out_image);
