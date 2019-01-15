@@ -60,7 +60,27 @@ while True:
     inputs, outputs, errors = select.select([data_sock], [], [])
     for oneInput in inputs:
         if oneInput == data_sock:
-            data, addr = data_sock.recvfrom(65535)
+
+            data = None
+
+            # empty out the recv buffer (in case fig.canvas.draw is slower than udp packets)
+            data_sock.setblocking(0)
+            cont=True
+            while cont:
+                try:
+                    tmpData, addr = data_sock.recvfrom(65535)
+                except Exception as ee:
+                    #print(ee)
+                    cont=False
+                else:
+                    if tmpData:
+                        if data is not None:
+                            print('throwing away a packet (GUI is too slow)')
+                        data = tmpData
+                    else:
+                        cont=False
+            data_sock.setblocking(1)
+
             print(len(data))
             scanline = np.fromstring(data, dtype='<u2')
             left_scan_line = scanline[:848] * depth_scale
