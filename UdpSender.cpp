@@ -6,29 +6,18 @@
 
 
 
-UdpSender::UdpSender(const char *ServerAddress, uint16_t DataRxPort, uint16_t ImageRxPort) {
+UdpSender::UdpSender(const char *ServerAddress, uint16_t ServerRxPort) {
 
 	_ServerAddress = ServerAddress;
-	_DataRxPort = DataRxPort;
-	_ImageRxPort = ImageRxPort;
+	_ServerRxPort = ServerRxPort;
 
 	bzero((char*)&data_server, sizeof(data_server));
-	bzero((char*)&image_server, sizeof(image_server));
 	data_server.sin_family = AF_INET;
-	image_server.sin_family = AF_INET;
 	data_server.sin_addr.s_addr = inet_addr(_ServerAddress);
-	image_server.sin_addr.s_addr = inet_addr(_ServerAddress);
-	data_server.sin_port = htons(_DataRxPort);
-	image_server.sin_port = htons(_ImageRxPort);
+	data_server.sin_port = htons(_ServerRxPort);
 
 	data_sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (data_sockfd < 0) {
-		fprintf(stderr, "Error opening socket");
-		//return EXIT_FAILURE;
-	}
-
-	image_sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-	if (image_sockfd < 0) {
 		fprintf(stderr, "Error opening socket");
 		//return EXIT_FAILURE;
 	}
@@ -56,8 +45,8 @@ void UdpSender::sendImage(unsigned char *outBuffer, int bufLen) {
 	startStringLen = sprintf(startString, START_MAGIC, bufLen);
 
 	// Send the jpg image out via UDP:
-	sendto(image_sockfd, startString, startStringLen, 0,
-	       (const struct sockaddr*)&image_server, sizeof(image_server));
+	sendto(data_sockfd, startString, startStringLen, 0,
+	       (const struct sockaddr*)&data_server, sizeof(data_server));
 
 	while (filepos < bufLen) {
 		if (bufLen - filepos < 1400) {
@@ -67,14 +56,14 @@ void UdpSender::sendImage(unsigned char *outBuffer, int bufLen) {
 			// (... but the max *safe* UDP payload is 508 bytes...)
 		}
 
-		sendto(image_sockfd, &outBuffer[filepos], numbytes, 0,
-		       (const struct sockaddr*)&image_server, sizeof(image_server));
+		sendto(data_sockfd, &outBuffer[filepos], numbytes, 0,
+		       (const struct sockaddr*)&data_server, sizeof(data_server));
 
 		filepos += numbytes;
 	}
 
-	sendto(image_sockfd, STOP_MAGIC, STOP_MAGIC_LEN, 0,
-	       (const struct sockaddr*)&image_server, sizeof(image_server));
+	sendto(data_sockfd, STOP_MAGIC, STOP_MAGIC_LEN, 0,
+	       (const struct sockaddr*)&data_server, sizeof(data_server));
 }
 
 

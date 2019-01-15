@@ -73,7 +73,7 @@ void get_frame_thread(rs2::frameset frames, int cam_number) {
 
 
 #ifdef USE_NETWORK_DISPLAY
-UdpSender udpSender("192.168.100.103", 3101, 3123);
+UdpSender udpSender("192.168.100.103", 3123);
 
 void network_sender_thread(std::vector<int> params) {
 	std::vector<uchar> outputBuffer;
