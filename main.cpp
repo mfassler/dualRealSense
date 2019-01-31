@@ -11,6 +11,7 @@
 
 #include <stdio.h>
 #include <sys/time.h>  // gettimeofday
+#include <sys/stat.h>
 
 #include <thread>
 
@@ -28,8 +29,8 @@ cv::Mat depth_image[2];
 cv::Mat out_image;
 
 
-#define USE_NETWORK_DISPLAY
-//#define USE_LOCAL_DISPLAY
+//#define USE_NETWORK_DISPLAY
+#define USE_LOCAL_DISPLAY
 
 
 double gettimeofday_as_double() {
@@ -90,6 +91,69 @@ void network_sender_thread(std::vector<int> params) {
 
 
 int main(int argc, char* argv[]) {
+
+	printf("Hello whirled!\n");
+
+
+	// ##########################################################
+	// ##########################################################
+	//     BEGIN:  Read in config file
+	// ##########################################################
+	// ##########################################################
+	std::string filename = "config.yaml";
+	if (argc == 2) {
+		filename = argv[1];
+	}
+	if (argc > 2) {
+		printf("Usage: %s [optional_config_file.yaml]\n", argv[0]);
+		exit(1);
+	}
+
+	// Check if the file exists:
+	struct stat _sbuffer;
+	if (stat(filename.c_str(), &_sbuffer) != 0) {
+		printf("Can't access config file: %s\n", filename.c_str());
+		exit(1);
+	}
+
+	printf("Using config file: %s\n", filename.c_str());
+
+	cv::FileStorage fs;
+	fs.open(filename, cv::FileStorage::READ);
+
+	cv::FileNode fn_lcs = fs["left_camera_serial"];
+	cv::FileNode fn_rcs = fs["right_camera_serial"];
+
+	if (fn_lcs.type() == cv::FileNode::NONE) {
+		printf("Config file is missing:  left_camera_serial\n");
+		exit(1);
+	}
+	if (fn_rcs.type() == cv::FileNode::NONE) {
+		printf("Config file is missing:  right_camera_serial\n");
+		exit(1);
+	}
+	if (fn_lcs.type() != cv::FileNode::STR) {
+		printf("Config file:  left_camera_serial should be a string\n");
+		exit(1);
+	}
+	if (fn_rcs.type() != cv::FileNode::STR) {
+		printf("Config file:  right_camera_serial should be a string\n");
+		exit(1);
+	}
+
+	std::string left_camera_serial = fn_lcs.string();
+	std::string right_camera_serial = fn_rcs.string();
+
+	printf("left_camera_serial: %s\n", left_camera_serial.c_str());
+	printf("right_camera_serial: %s\n", right_camera_serial.c_str());
+
+	// ##########################################################
+	// ##########################################################
+	//     END:  Read in config file
+	// ##########################################################
+	// ##########################################################
+
+
 	std::vector<int> params;
 	params.push_back(cv::IMWRITE_JPEG_QUALITY);
 	params.push_back(30);
@@ -103,19 +167,33 @@ int main(int argc, char* argv[]) {
 	rs2::config config_0;
 	rs2::config config_1;
 
-	config_0.enable_device("819612072741");
+	config_0.enable_device(left_camera_serial);
 	config_0.enable_stream(RS2_STREAM_COLOR, 848, 480, RS2_FORMAT_BGR8, 30);
 	config_0.enable_stream(RS2_STREAM_DEPTH, 848, 480, RS2_FORMAT_Z16, 30);
 	//config_0.enable_device_from_file(argv[1], false);
 
 
-	config_1.enable_device("745212070261");
+	config_1.enable_device(right_camera_serial);
 	config_1.enable_stream(RS2_STREAM_COLOR, 848, 480, RS2_FORMAT_BGR8, 30);
 	config_1.enable_stream(RS2_STREAM_DEPTH, 848, 480, RS2_FORMAT_Z16, 30);
 	//config_1.enable_device_from_file(argv[2], false);
 
-	auto profile_0 = pipeline_0.start(config_0);
-	auto profile_1 = pipeline_1.start(config_1);
+	printf("Attempting to start the pipelines...\n");
+	rs2::pipeline_profile profile_0;
+	rs2::pipeline_profile profile_1;
+	try {
+		profile_0 = pipeline_0.start(config_0);
+		profile_1 = pipeline_1.start(config_1);
+	} catch (const rs2::error& e) {
+		printf("...pipelines failed.\n");
+		printf("\n");
+		printf("  - perhaps wrong serial number in config file?\n");
+		printf("  - perhaps the cameras aren't being seen as USB-3 devices?\n");
+		printf("       (RealSenses don't work too well as USB-2 devices)\n");
+		printf("\n");
+		exit(1);
+	}
+	printf("...started.\n");
 
 	auto rgb_stream_0 = profile_0.get_stream(RS2_STREAM_COLOR).as<rs2::video_stream_profile>();
 	auto rgb_stream_1 = profile_1.get_stream(RS2_STREAM_COLOR).as<rs2::video_stream_profile>();

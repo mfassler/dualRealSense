@@ -1,0 +1,13 @@
+%YAML:1.0
+
+
+# You can find the serial numbers of your cameras with:
+#    rs-enumerate-devices  |grep -i serial
+#
+# keep as strings:
+
+left_camera_serial: "819612072741"
+
+#right_camera_serial: "745212070261"
+right_camera_serial: "827112071066"
+
