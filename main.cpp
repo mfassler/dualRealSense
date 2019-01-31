@@ -92,9 +92,6 @@ void network_sender_thread(std::vector<int> params) {
 
 int main(int argc, char* argv[]) {
 
-	printf("Hello whirled!\n");
-
-
 	// ##########################################################
 	// ##########################################################
 	//     BEGIN:  Read in config file
@@ -143,6 +140,8 @@ int main(int argc, char* argv[]) {
 
 	std::string left_camera_serial = fn_lcs.string();
 	std::string right_camera_serial = fn_rcs.string();
+
+	fs.release();
 
 	printf("left_camera_serial: %s\n", left_camera_serial.c_str());
 	printf("right_camera_serial: %s\n", right_camera_serial.c_str());
