@@ -44,6 +44,10 @@ double gettimeofday_as_double() {
 }
 
 
+
+unsigned char vid_frame_buffer[2][848*480*3];
+unsigned char dep_frame_buffer[2][848*480*2];
+
 void get_frame_thread(rs2::frameset frames, int cam_number) {
 
 	rs2::align align(RS2_STREAM_COLOR);
@@ -51,12 +55,17 @@ void get_frame_thread(rs2::frameset frames, int cam_number) {
 	rs2::video_frame vid_frame = processed.get_color_frame();
 	rs2::depth_frame dep_frame = processed.get_depth_frame();
 
+	// TODO, FIXME:  when this thread ends, sometimes dep_frame is destroyed
+	// before main() has a chance to use the data, causing a sigsegv.  
+	// TODO:  how to keep the actual data in scope without doing a copy...
+	memcpy(vid_frame_buffer[cam_number], vid_frame.get_data(), 848*480*3);
+	memcpy(dep_frame_buffer[cam_number], dep_frame.get_data(), 848*480*2);
 
 	color_image[cam_number] = cv::Mat(cv::Size(vid_frame.get_width(), vid_frame.get_height()),
-		CV_8UC3, (void*)vid_frame.get_data(), cv::Mat::AUTO_STEP);
+		CV_8UC3, vid_frame_buffer[cam_number], cv::Mat::AUTO_STEP);
 
 	depth_image[cam_number] = cv::Mat(cv::Size(dep_frame.get_width(), dep_frame.get_height()),
-		CV_16UC1, (void*)dep_frame.get_data(), cv::Mat::AUTO_STEP);
+		CV_16UC1, dep_frame_buffer[cam_number], cv::Mat::AUTO_STEP);
 
 	for (int i=0; i<depth_image[cam_number].rows; ++i) {
 		for (int j=0; j<depth_image[cam_number].cols; ++j) {
