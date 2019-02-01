@@ -1,6 +1,6 @@
 ## Build Options:
 NETWORK_DISPLAY = 0
-QR_CODES = 1
+QR_CODES = 0
 
 
 ######

@@ -52,10 +52,16 @@ double gettimeofday_as_double() {
 	return ts;
 }
 
+void printTimeofday(std::string prefix) {
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	printf("%s%ld.%06ld\n", prefix.c_str(), tv.tv_sec, tv.tv_usec);
+}
 
 
-unsigned char vid_frame_buffer[2][848*480*3];
-unsigned char dep_frame_buffer[2][848*480*2];
+
+unsigned char vid_frame_buffer_1[848*480*3];
+unsigned char dep_frame_buffer_1[848*480*2];
 
 void get_frame_thread(rs2::frameset frames, int cam_number) {
 
@@ -64,17 +70,32 @@ void get_frame_thread(rs2::frameset frames, int cam_number) {
 	rs2::video_frame vid_frame = processed.get_color_frame();
 	rs2::depth_frame dep_frame = processed.get_depth_frame();
 
-	// TODO, FIXME:  when this thread ends, sometimes dep_frame is destroyed
-	// before main() has a chance to use the data, causing a sigsegv.  
-	// TODO:  how to keep the actual data in scope without doing a copy...
-	memcpy(vid_frame_buffer[cam_number], vid_frame.get_data(), 848*480*3);
-	memcpy(dep_frame_buffer[cam_number], dep_frame.get_data(), 848*480*2);
 
-	color_image[cam_number] = cv::Mat(cv::Size(vid_frame.get_width(), vid_frame.get_height()),
-		CV_8UC3, vid_frame_buffer[cam_number], cv::Mat::AUTO_STEP);
+	if (cam_number == 0) {
+		// camera 0 is upside-down.  Since we do a CV flip, we don't care if we lose
+		// the original objet
+		cv::Mat c_image(cv::Size(vid_frame.get_width(), vid_frame.get_height()),
+			CV_8UC3, (void*)vid_frame.get_data(), cv::Mat::AUTO_STEP);
 
-	depth_image[cam_number] = cv::Mat(cv::Size(dep_frame.get_width(), dep_frame.get_height()),
-		CV_16UC1, dep_frame_buffer[cam_number], cv::Mat::AUTO_STEP);
+		cv::Mat d_image(cv::Size(dep_frame.get_width(), dep_frame.get_height()),
+			CV_16UC1, (void*)dep_frame.get_data(), cv::Mat::AUTO_STEP);
+
+		cv::flip(c_image, color_image[0], -1);
+		cv::flip(d_image, depth_image[0], -1);
+
+	} else {
+
+		// TODO, FIXME:  when this thread ends, sometimes dep_frame is destroyed
+		// before main() has a chance to use the data, causing a sigsegv.  
+		// TODO:  how to keep the actual data in scope without doing a copy...
+		memcpy(vid_frame_buffer_1, vid_frame.get_data(), 848*480*3);
+		memcpy(dep_frame_buffer_1, dep_frame.get_data(), 848*480*2);
+		color_image[cam_number] = cv::Mat(cv::Size(vid_frame.get_width(), vid_frame.get_height()),
+			CV_8UC3, vid_frame_buffer_1, cv::Mat::AUTO_STEP);
+
+		depth_image[cam_number] = cv::Mat(cv::Size(dep_frame.get_width(), dep_frame.get_height()),
+			CV_16UC1, dep_frame_buffer_1, cv::Mat::AUTO_STEP);
+	}
 
 	for (int i=0; i<depth_image[cam_number].rows; ++i) {
 		for (int j=0; j<depth_image[cam_number].cols; ++j) {
@@ -91,7 +112,11 @@ void get_frame_thread(rs2::frameset frames, int cam_number) {
 
 
 #ifdef USE_ZBAR
-void QR_code_detect_thread() {
+
+zbar::Image *zImage[2];
+int num_qr_codes[2];
+
+void QR_code_detect_thread(int cam_number) {
 	zbar::ImageScanner zbarScanner;
 	zbarScanner.set_config(zbar::ZBAR_NONE, zbar::ZBAR_CFG_ENABLE, 0);
 	zbarScanner.set_config(zbar::ZBAR_QRCODE, zbar::ZBAR_CFG_ENABLE, 1);
@@ -101,21 +126,15 @@ void QR_code_detect_thread() {
 	zbarScanner.set_config(zbar::ZBAR_NONE, zbar::ZBAR_CFG_X_DENSITY, 1);
 	zbarScanner.set_config(zbar::ZBAR_NONE, zbar::ZBAR_CFG_Y_DENSITY, 1);
 
+
 	if (out_image.cols > 10 && out_image.rows > 10) {
 		cv::Mat gray_image1;
-		cv::cvtColor(out_image, gray_image1, cv::COLOR_RGB2GRAY);
-		zbar::Image zImage(gray_image1.cols, gray_image1.rows, "Y800", (uchar *)gray_image1.data, gray_image1.cols * gray_image1.rows);
+		cv::cvtColor(color_image[cam_number], gray_image1, cv::COLOR_RGB2GRAY);
 
-		int n = zbarScanner.scan(zImage);
+		zImage[cam_number] = new zbar::Image(gray_image1.cols, gray_image1.rows, "Y800", (uchar *)gray_image1.data, gray_image1.cols * gray_image1.rows);
 
-		for(zbar::Image::SymbolIterator symbol = zImage.symbol_begin();
-			symbol != zImage.symbol_end();
-			++symbol)
-		{
-		//printf("type: %s, data: %s\n", symbol->get_type_name(), symbol->get_data());
-		std::cout << "Type: " << symbol->get_type_name() << std::endl;
-		std::cout << "Data: " << symbol->get_data() << std::endl;
-		}
+		int n = zbarScanner.scan(*zImage[cam_number]);
+		num_qr_codes[cam_number] = n;
 	}
 }
 #endif // USE_ZBAR
@@ -236,7 +255,6 @@ int main(int argc, char* argv[]) {
 		exit(1);
 	}
 
-
 	rs2::pipeline pipeline_0;
 	rs2::pipeline pipeline_1;
 
@@ -324,7 +342,8 @@ int main(int argc, char* argv[]) {
 #endif
 
 #ifdef USE_ZBAR
-		std::thread t3(QR_code_detect_thread);
+		std::thread t3(QR_code_detect_thread, 0);
+		std::thread t4(QR_code_detect_thread, 1);
 #endif // USE_ZBAR
 
 		rs2::frameset frames_0 = pipeline_0.wait_for_frames();
@@ -337,30 +356,40 @@ int main(int argc, char* argv[]) {
 		t0.join();
 		t1.join();
 
-
-		if (color_image[0].rows > 10 && color_image[0].rows == color_image[1].rows) {
-
-			// Left camera is upside-down:
-			cv::Mat color_image_0a;
-			cv::Mat depth_image_0a;
-			cv::flip(color_image[0], color_image_0a, -1);
-			cv::flip(depth_image[0], depth_image_0a, -1);
-
 #ifdef USE_NETWORK_DISPLAY
 			t2.join();
 #endif
 
 #ifdef USE_ZBAR
 		t3.join();
-#endif // USE_ZBAR
+		t4.join();
 
-			cv::hconcat(color_image_0a, color_image[1], out_image);
+		for (int camNo=0; camNo<2; ++camNo) {
+			if (num_qr_codes[camNo] > 0) {
+				zbar::Image::SymbolIterator symbol = zImage[camNo]->symbol_begin();
+				for(; symbol != zImage[camNo]->symbol_end(); ++symbol)
+				{
+					//printf("type: %s, data: %s\n", symbol->get_type_name(), symbol->get_data());
+					std::cout << "Type: " << symbol->get_type_name() << std::endl;
+					std::cout << "Data: " << symbol->get_data() << std::endl;
+					for(int j=0; j < symbol->get_location_size(); ++j) {
+						cv::Point pt(symbol->get_location_x(j), symbol->get_location_y(j));
+						cv::circle(color_image[camNo], pt, 6, cv::Scalar(0,0,255), -1);
+					}
+				}
+			}
+		}
+
+#endif // USE_ZBAR
+		if (color_image[0].rows > 10 && color_image[0].rows == color_image[1].rows) {
+
+			cv::hconcat(color_image[0], color_image[1], out_image);
 
 			// http://longstryder.com/2014/07/which-way-of-accessing-pixels-in-opencv-is-the-fastest/
 			// Get a scan of the very middle row (the horizon, in theory)
 			const unsigned char *ptr;
 			unsigned char scanOut[ 848 * 2 * 2 ];  // will be larger than ethernet MTU  :-( ...
-			ptr = depth_image_0a.ptr(240);
+			ptr = depth_image[0].ptr(240);
 			for (int col=0; col < 848*2; ++col) {
 				scanOut[col] = ptr[col];
 			}
