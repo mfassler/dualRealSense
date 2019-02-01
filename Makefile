@@ -1,6 +1,6 @@
 ## Build Options:
 NETWORK_DISPLAY = 0
-
+QR_CODES = 1
 
 
 ######
@@ -35,6 +35,11 @@ LD = g++
 LDFLAGS += -pthread
 LDLIBS += -lrealsense2
 LDLIBS += $(shell pkg-config --libs opencv)
+
+ifeq ($(QR_CODES), 1)
+CPPFLAGS += -DUSE_ZBAR
+LDLIBS += -lzbar
+endif
 
 
 # Default target:

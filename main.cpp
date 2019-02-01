@@ -26,7 +26,15 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#ifdef USE_ZBAR
+#include <string>
+#include <iostream>
+
+#include <zbar.h>
+#endif // USE_ZBAR
+
 #include "UdpJpegSenderThread.hpp"
+
 
 cv::Mat color_image[2];
 cv::Mat depth_image[2];
@@ -82,6 +90,35 @@ void get_frame_thread(rs2::frameset frames, int cam_number) {
 }
 
 
+#ifdef USE_ZBAR
+void QR_code_detect_thread() {
+	zbar::ImageScanner zbarScanner;
+	zbarScanner.set_config(zbar::ZBAR_NONE, zbar::ZBAR_CFG_ENABLE, 0);
+	zbarScanner.set_config(zbar::ZBAR_QRCODE, zbar::ZBAR_CFG_ENABLE, 1);
+
+	// TODO:  not entirely sure if I'm doing this right, or what the best setting is:
+	// (I'm pretty sure that 1 is highest density/slowest speed)
+	zbarScanner.set_config(zbar::ZBAR_NONE, zbar::ZBAR_CFG_X_DENSITY, 1);
+	zbarScanner.set_config(zbar::ZBAR_NONE, zbar::ZBAR_CFG_Y_DENSITY, 1);
+
+	if (out_image.cols > 10 && out_image.rows > 10) {
+		cv::Mat gray_image1;
+		cv::cvtColor(out_image, gray_image1, cv::COLOR_RGB2GRAY);
+		zbar::Image zImage(gray_image1.cols, gray_image1.rows, "Y800", (uchar *)gray_image1.data, gray_image1.cols * gray_image1.rows);
+
+		int n = zbarScanner.scan(zImage);
+
+		for(zbar::Image::SymbolIterator symbol = zImage.symbol_begin();
+			symbol != zImage.symbol_end();
+			++symbol)
+		{
+		//printf("type: %s, data: %s\n", symbol->get_type_name(), symbol->get_data());
+		std::cout << "Type: " << symbol->get_type_name() << std::endl;
+		std::cout << "Data: " << symbol->get_data() << std::endl;
+		}
+	}
+}
+#endif // USE_ZBAR
 
 
 
@@ -285,6 +322,11 @@ int main(int argc, char* argv[]) {
 #ifdef USE_NETWORK_DISPLAY
 		std::thread t2(network_jpg_sender_thread, udp_sockfd, out_image, jpgRxAddr);
 #endif
+
+#ifdef USE_ZBAR
+		std::thread t3(QR_code_detect_thread);
+#endif // USE_ZBAR
+
 		rs2::frameset frames_0 = pipeline_0.wait_for_frames();
 		rs2::frameset frames_1 = pipeline_1.wait_for_frames();
 
@@ -307,6 +349,11 @@ int main(int argc, char* argv[]) {
 #ifdef USE_NETWORK_DISPLAY
 			t2.join();
 #endif
+
+#ifdef USE_ZBAR
+		t3.join();
+#endif // USE_ZBAR
+
 			cv::hconcat(color_image_0a, color_image[1], out_image);
 
 			// http://longstryder.com/2014/07/which-way-of-accessing-pixels-in-opencv-is-the-fastest/
