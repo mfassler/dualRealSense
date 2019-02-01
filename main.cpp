@@ -136,9 +136,9 @@ int main(int argc, char* argv[]) {
 	std::string left_camera_serial = fn_lcs.string();
 	std::string right_camera_serial = fn_rcs.string();
 
-
 	printf("left_camera_serial: %s\n", left_camera_serial.c_str());
 	printf("right_camera_serial: %s\n", right_camera_serial.c_str());
+
 
 #ifdef USE_NETWORK_DISPLAY
 	struct sockaddr_in jpgRxAddr;
@@ -157,6 +157,24 @@ int main(int argc, char* argv[]) {
 	printf("\nSending network video to: %s %d/udp\n\n", buffer, ntohs(jpgRxAddr.sin_port));
 #endif // USE_NETWORK_DISPLAY
 
+
+	struct sockaddr_in *scanline_rx_addr;
+	int number_of_scanline_rxs = 0;
+	if (fs["scanline_rx"].type() == cv::FileNode::SEQ) {
+		number_of_scanline_rxs = fs["scanline_rx"].size();
+		scanline_rx_addr = (struct sockaddr_in*)malloc(number_of_scanline_rxs* sizeof(struct sockaddr_in));
+		for (int i=0; i< number_of_scanline_rxs; ++i) {
+			std::string addr = fs["scanline_rx"][i]["addr"].string();
+			int port = fs["scanline_rx"][i]["port"].real();
+			printf("Sending scanline data to: %s %d/udp\n", addr.c_str(), port);
+
+			scanline_rx_addr[i].sin_family = AF_INET;
+			scanline_rx_addr[i].sin_addr.s_addr = inet_addr(addr.c_str());
+			scanline_rx_addr[i].sin_port = htons(port);
+		}
+	}
+	printf("\n");
+
 	fs.release();
 
 	// ##########################################################
@@ -164,15 +182,6 @@ int main(int argc, char* argv[]) {
 	//     END:  Read in config file
 	// ##########################################################
 	// ##########################################################
-
-	// TODO:  move these into the config file:
-	struct sockaddr_in scanline_rx_addr[1];
-	int number_of_scanline_rxs = 1;
-
-	scanline_rx_addr[0].sin_family = AF_INET;
-	scanline_rx_addr[0].sin_addr.s_addr = inet_addr("127.0.0.1");
-	scanline_rx_addr[0].sin_port = htons(3125);
-
 
 
 	int udp_sockfd = socket(AF_INET, SOCK_DGRAM, 0);
