@@ -310,6 +310,10 @@ int main(int argc, char* argv[]) {
 	rgb_intrinsics_0a.coeffs[3] = rgb_intrinsics_0.coeffs[3];
 	rgb_intrinsics_0a.coeffs[4] = rgb_intrinsics_0.coeffs[4];
 
+	const rs2_intrinsics rgb_intrs[2] = {
+		rgb_intrinsics_0a, rgb_intrinsics_1
+	};
+
 	printf("orig: %d %d  %f %f %f %f\n", rgb_intrinsics_0.width, rgb_intrinsics_0.height, rgb_intrinsics_0.ppx, rgb_intrinsics_0.ppy, rgb_intrinsics_0.fx, rgb_intrinsics_0.fy);
 
 	// -----------
@@ -366,21 +370,42 @@ int main(int argc, char* argv[]) {
 
 		for (int camNo=0; camNo<2; ++camNo) {
 			if (num_qr_codes[camNo] > 0) {
+
 				zbar::Image::SymbolIterator symbol = zImage[camNo]->symbol_begin();
 				for(; symbol != zImage[camNo]->symbol_end(); ++symbol)
 				{
 					//printf("type: %s, data: %s\n", symbol->get_type_name(), symbol->get_data());
 					std::cout << "Type: " << symbol->get_type_name() << std::endl;
 					std::cout << "Data: " << symbol->get_data() << std::endl;
+					float avg_point[3] = {0,0,0};
+					bool _valid = true;
 					for(int j=0; j < symbol->get_location_size(); ++j) {
-						cv::Point pt(symbol->get_location_x(j), symbol->get_location_y(j));
+						float pixel[2] = {symbol->get_location_x(j), symbol->get_location_y(j)};
+						cv::Point pt(pixel[0], pixel[1]);
+
 						cv::circle(color_image[camNo], pt, 6, cv::Scalar(0,0,255), -1);
+
+						float point[3];
+
+						uint16_t _d = depth_image[camNo].at<uint16_t>(pixel[1], pixel[0]);
+						float depth = _d * depth_scale;
+						if (depth < 8.0) {
+							rs2_deproject_pixel_to_point(point, &rgb_intrs[camNo], pixel, depth);
+							avg_point[0] += point[0] / symbol->get_location_size();;
+							avg_point[1] += point[1] / symbol->get_location_size();;
+							avg_point[2] += point[2] / symbol->get_location_size();;
+						} else {
+							_valid = false;
+						}
+					}
+					if (_valid) {
+						printf("%f, %f, %f \n", avg_point[0], avg_point[1], avg_point[2]);
 					}
 				}
 			}
 		}
-
 #endif // USE_ZBAR
+
 		if (color_image[0].rows > 10 && color_image[0].rows == color_image[1].rows) {
 
 			cv::hconcat(color_image[0], color_image[1], out_image);
