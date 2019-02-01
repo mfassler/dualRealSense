@@ -85,7 +85,8 @@ void get_frame_thread(rs2::frameset frames, int cam_number) {
 #ifdef USE_NETWORK_DISPLAY
 UdpSender udpSender("192.168.100.103", 3123);
 
-void network_sender_thread(std::vector<int> params) {
+void network_sender_thread() {
+	std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, 30};
 	std::vector<uchar> outputBuffer;
 
 	if (out_image.cols > 10 && out_image.rows > 10) {
@@ -161,10 +162,6 @@ int main(int argc, char* argv[]) {
 	// ##########################################################
 	// ##########################################################
 
-
-	std::vector<int> params;
-	params.push_back(cv::IMWRITE_JPEG_QUALITY);
-	params.push_back(30);
 
 	UdpSender scanlineSender("192.168.100.103", 3125);
 	unsigned char scanOut[ 848 * 2 * 2 ];  // will be larger than ethernet MTU  :-( ...
@@ -253,7 +250,7 @@ int main(int argc, char* argv[]) {
 	while (true) {
 
 #ifdef USE_NETWORK_DISPLAY
-		std::thread t2(network_sender_thread, params);
+		std::thread t2(network_sender_thread);
 #endif
 		rs2::frameset frames_0 = pipeline_0.wait_for_frames();
 		rs2::frameset frames_1 = pipeline_1.wait_for_frames();
