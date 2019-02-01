@@ -1,3 +1,9 @@
+## Build Options:
+NETWORK_DISPLAY = 0
+LOCAL_DISPLAY = 1
+
+
+
 ######
 ######   What are we building?
 ######
@@ -8,7 +14,8 @@ TARGET = dualMe
 # Objects that must be built in order to link
 
 OBJECTS = main.o
-OBJECTS += UdpSender.o
+OBJECTS += UdpJpegSenderThread.o
+
 
 ######
 ######   Binaries and flags
@@ -18,10 +25,19 @@ CPPFLAGS = -std=c++11
 #CPPFLAGS += -O3
 CPPFLAGS += -g
 
+ifeq ($(NETWORK_DISPLAY), 1)
+CPPFLAGS += -DUSE_NETWORK_DISPLAY
+endif
+
+ifeq ($(LOCAL_DISPLAY), 1)
+CPPFLAGS += -DUSE_LOCAL_DISPLAY
+endif
+
+
 LD = g++
 
-LDFLAGS = -pthread
 #LDFLAGS += -L/usr/local/lib/
+LDFLAGS += -pthread
 LDLIBS += -lrealsense2
 LDLIBS += $(shell pkg-config --libs opencv)
 

@@ -22,15 +22,16 @@
 #include <opencv2/imgproc.hpp>
 #include <opencv2/highgui.hpp>
 
-#include "UdpSender.hpp"
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+#include "UdpJpegSenderThread.hpp"
 
 cv::Mat color_image[2];
 cv::Mat depth_image[2];
 cv::Mat out_image;
 
-
-//#define USE_NETWORK_DISPLAY
-#define USE_LOCAL_DISPLAY
 
 
 double gettimeofday_as_double() {
@@ -82,22 +83,6 @@ void get_frame_thread(rs2::frameset frames, int cam_number) {
 
 
 
-#ifdef USE_NETWORK_DISPLAY
-UdpSender udpSender("192.168.100.103", 3123);
-
-void network_sender_thread() {
-	std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, 30};
-	std::vector<uchar> outputBuffer;
-
-	if (out_image.cols > 10 && out_image.rows > 10) {
-		if (!cv::imencode("*.jpg", out_image, outputBuffer, params)) {
-			printf("failed to imencode\n");
-		} else {
-			udpSender.sendImage((unsigned char*)&outputBuffer[0], outputBuffer.size());
-		}
-	}
-}
-#endif // USE_NETWORK_DISPLAY
 
 
 int main(int argc, char* argv[]) {
@@ -162,8 +147,26 @@ int main(int argc, char* argv[]) {
 	// ##########################################################
 	// ##########################################################
 
+	// TODO:  move these into the config file:
+	struct sockaddr_in jpgRxAddr;
+	struct sockaddr_in scanline_rx_addr[1];
+	int number_of_scanline_rxs = 1;
+	jpgRxAddr.sin_family = AF_INET;
+	jpgRxAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+	jpgRxAddr.sin_port = htons(3123);
 
-	UdpSender scanlineSender("192.168.100.103", 3125);
+	scanline_rx_addr[0].sin_family = AF_INET;
+	scanline_rx_addr[0].sin_addr.s_addr = inet_addr("127.0.0.1");
+	scanline_rx_addr[0].sin_port = htons(3125);
+
+
+
+	int udp_sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (udp_sockfd < 0) {
+		perror("failed to open UDP socket");
+		exit(1);
+	}
+
 	unsigned char scanOut[ 848 * 2 * 2 ];  // will be larger than ethernet MTU  :-( ...
 
 	rs2::pipeline pipeline_0;
@@ -250,7 +253,7 @@ int main(int argc, char* argv[]) {
 	while (true) {
 
 #ifdef USE_NETWORK_DISPLAY
-		std::thread t2(network_sender_thread);
+		std::thread t2(network_jpg_sender_thread, udp_sockfd, out_image, jpgRxAddr);
 #endif
 		rs2::frameset frames_0 = pipeline_0.wait_for_frames();
 		rs2::frameset frames_1 = pipeline_1.wait_for_frames();
@@ -287,7 +290,10 @@ int main(int argc, char* argv[]) {
 			for (int col=0; col < 848*2; ++col) {
 				scanOut[col+848*2] = ptr[col];
 			}
-			scanlineSender.sendData(scanOut, 848*2*2);
+			for (int i=0; i<number_of_scanline_rxs; ++i) {
+				sendto(udp_sockfd, scanOut, 848*2*2, 0,
+					(const struct sockaddr*)&scanline_rx_addr[i], sizeof(scanline_rx_addr[i]));
+			}
 
 
 #ifdef USE_LOCAL_DISPLAY
