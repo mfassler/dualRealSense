@@ -136,10 +136,28 @@ int main(int argc, char* argv[]) {
 	std::string left_camera_serial = fn_lcs.string();
 	std::string right_camera_serial = fn_rcs.string();
 
-	fs.release();
 
 	printf("left_camera_serial: %s\n", left_camera_serial.c_str());
 	printf("right_camera_serial: %s\n", right_camera_serial.c_str());
+
+#ifdef USE_NETWORK_DISPLAY
+	struct sockaddr_in jpgRxAddr;
+	jpgRxAddr.sin_family = AF_INET;
+	jpgRxAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+	jpgRxAddr.sin_port = htons(3123);
+	if (fs["network_jpg_address"].type() == cv::FileNode::STR) {
+		jpgRxAddr.sin_addr.s_addr = inet_addr(fs["network_jpg_address"].string().c_str());
+	}
+	if (fs["network_jpg_port"].type() == cv::FileNode::INT) {
+		jpgRxAddr.sin_port = htons(fs["network_jpg_port"].real());
+	}
+
+	char buffer[24];
+	inet_ntop(AF_INET, &(jpgRxAddr.sin_addr), buffer, 24);
+	printf("\nSending network video to: %s %d/udp\n\n", buffer, ntohs(jpgRxAddr.sin_port));
+#endif // USE_NETWORK_DISPLAY
+
+	fs.release();
 
 	// ##########################################################
 	// ##########################################################
@@ -148,12 +166,8 @@ int main(int argc, char* argv[]) {
 	// ##########################################################
 
 	// TODO:  move these into the config file:
-	struct sockaddr_in jpgRxAddr;
 	struct sockaddr_in scanline_rx_addr[1];
 	int number_of_scanline_rxs = 1;
-	jpgRxAddr.sin_family = AF_INET;
-	jpgRxAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
-	jpgRxAddr.sin_port = htons(3123);
 
 	scanline_rx_addr[0].sin_family = AF_INET;
 	scanline_rx_addr[0].sin_addr.s_addr = inet_addr("127.0.0.1");
@@ -167,7 +181,6 @@ int main(int argc, char* argv[]) {
 		exit(1);
 	}
 
-	unsigned char scanOut[ 848 * 2 * 2 ];  // will be larger than ethernet MTU  :-( ...
 
 	rs2::pipeline pipeline_0;
 	rs2::pipeline pipeline_1;
@@ -248,7 +261,6 @@ int main(int argc, char* argv[]) {
 	double fps = 0.0;
 	double ts0 = gettimeofday_as_double();
 	double ts1;
-	double tFrame;
 
 	while (true) {
 
@@ -282,6 +294,7 @@ int main(int argc, char* argv[]) {
 			// http://longstryder.com/2014/07/which-way-of-accessing-pixels-in-opencv-is-the-fastest/
 			// Get a scan of the very middle row (the horizon, in theory)
 			const unsigned char *ptr;
+			unsigned char scanOut[ 848 * 2 * 2 ];  // will be larger than ethernet MTU  :-( ...
 			ptr = depth_image_0a.ptr(240);
 			for (int col=0; col < 848*2; ++col) {
 				scanOut[col] = ptr[col];
@@ -290,6 +303,8 @@ int main(int argc, char* argv[]) {
 			for (int col=0; col < 848*2; ++col) {
 				scanOut[col+848*2] = ptr[col];
 			}
+
+			// send scanOut to target(s) via UDP:
 			for (int i=0; i<number_of_scanline_rxs; ++i) {
 				sendto(udp_sockfd, scanOut, 848*2*2, 0,
 					(const struct sockaddr*)&scanline_rx_addr[i], sizeof(scanline_rx_addr[i]));
@@ -302,7 +317,7 @@ int main(int argc, char* argv[]) {
 #endif
 
 			ts1 = gettimeofday_as_double();
-			tFrame = ts1 - ts0;
+			float tFrame = ts1 - ts0;
 			ts0 = ts1;
 
 			fps = 0.667 * fps + 0.333 * (1.0 / tFrame);
