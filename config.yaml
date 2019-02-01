@@ -17,4 +17,5 @@ network_jpg_port: 3123
 scanline_rx: [{addr: "127.0.0.1", port: 3125}]
 #scanline_rx: [{addr: "127.0.0.1", port: 3125}, {addr: "192.168.100.103", port: 666}]
 
+use_local_display: 1
 

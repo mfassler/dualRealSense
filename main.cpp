@@ -175,6 +175,15 @@ int main(int argc, char* argv[]) {
 	}
 	printf("\n");
 
+
+	bool USE_LOCAL_DISPLAY = false;
+	if (fs["use_local_display"].type() == cv::FileNode::INT) {
+		if (fs["use_local_display"].real() == 1) {
+			USE_LOCAL_DISPLAY = true;
+		}
+	}
+
+
 	fs.release();
 
 	// ##########################################################
@@ -319,11 +328,10 @@ int main(int argc, char* argv[]) {
 					(const struct sockaddr*)&scanline_rx_addr[i], sizeof(scanline_rx_addr[i]));
 			}
 
-
-#ifdef USE_LOCAL_DISPLAY
-			cv::imshow("RealSense", out_image);
-			cv::waitKey(1);
-#endif
+			if (USE_LOCAL_DISPLAY) {
+				cv::imshow("RealSense", out_image);
+				cv::waitKey(1);
+			}
 
 			ts1 = gettimeofday_as_double();
 			float tFrame = ts1 - ts0;

@@ -1,6 +1,5 @@
 ## Build Options:
 NETWORK_DISPLAY = 0
-LOCAL_DISPLAY = 1
 
 
 
@@ -27,10 +26,6 @@ CPPFLAGS += -g
 
 ifeq ($(NETWORK_DISPLAY), 1)
 CPPFLAGS += -DUSE_NETWORK_DISPLAY
-endif
-
-ifeq ($(LOCAL_DISPLAY), 1)
-CPPFLAGS += -DUSE_LOCAL_DISPLAY
 endif
 
 
