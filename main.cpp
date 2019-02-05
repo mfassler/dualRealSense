@@ -84,13 +84,14 @@ void get_frame_thread(rs2::frameset frames, int cam_number) {
 	}
 
 	for (int i=0; i<depth_image[cam_number].rows; ++i) {
+		uint16_t *ptr = (uint16_t*)depth_image[cam_number].ptr(i);
 		for (int j=0; j<depth_image[cam_number].cols; ++j) {
 			// A little counter-intuitive, but:
 			// The depth image has "shadows".  The Intel librealsense2 driver interprets
 			// shadows as distance == 0.  But we will change that to distance=max, so that
 			// everything else will ignore the shadows:
-			if (depth_image[cam_number].at<uint16_t>(i, j) < 20) {
-				depth_image[cam_number].at<uint16_t>(i, j) = 65535;
+			if (ptr[j] < 20) {
+				ptr[j] = 65535;
 			}
 		}
 	}
