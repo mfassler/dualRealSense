@@ -60,9 +60,6 @@ void printTimeofday(std::string prefix) {
 
 
 
-unsigned char vid_frame_buffer_1[848*480*3];
-unsigned char dep_frame_buffer_1[848*480*2];
-
 void get_frame_thread(rs2::frameset frames, int cam_number) {
 
 	rs2::align align(RS2_STREAM_COLOR);
@@ -70,31 +67,20 @@ void get_frame_thread(rs2::frameset frames, int cam_number) {
 	rs2::video_frame vid_frame = processed.get_color_frame();
 	rs2::depth_frame dep_frame = processed.get_depth_frame();
 
+	cv::Mat c_image(cv::Size(vid_frame.get_width(), vid_frame.get_height()),
+		CV_8UC3, (void*)vid_frame.get_data(), cv::Mat::AUTO_STEP);
+
+	cv::Mat d_image(cv::Size(dep_frame.get_width(), dep_frame.get_height()),
+		CV_16UC1, (void*)dep_frame.get_data(), cv::Mat::AUTO_STEP);
 
 	if (cam_number == 0) {
-		// camera 0 is upside-down.  Since we do a CV flip, we don't care if we lose
-		// the original objet
-		cv::Mat c_image(cv::Size(vid_frame.get_width(), vid_frame.get_height()),
-			CV_8UC3, (void*)vid_frame.get_data(), cv::Mat::AUTO_STEP);
-
-		cv::Mat d_image(cv::Size(dep_frame.get_width(), dep_frame.get_height()),
-			CV_16UC1, (void*)dep_frame.get_data(), cv::Mat::AUTO_STEP);
-
+		// camera 0 is upside-down
 		cv::flip(c_image, color_image[0], -1);
 		cv::flip(d_image, depth_image[0], -1);
-
 	} else {
-
-		// TODO, FIXME:  when this thread ends, sometimes dep_frame is destroyed
-		// before main() has a chance to use the data, causing a sigsegv.  
 		// TODO:  how to keep the actual data in scope without doing a copy...
-		memcpy(vid_frame_buffer_1, vid_frame.get_data(), 848*480*3);
-		memcpy(dep_frame_buffer_1, dep_frame.get_data(), 848*480*2);
-		color_image[cam_number] = cv::Mat(cv::Size(vid_frame.get_width(), vid_frame.get_height()),
-			CV_8UC3, vid_frame_buffer_1, cv::Mat::AUTO_STEP);
-
-		depth_image[cam_number] = cv::Mat(cv::Size(dep_frame.get_width(), dep_frame.get_height()),
-			CV_16UC1, dep_frame_buffer_1, cv::Mat::AUTO_STEP);
+		c_image.copyTo(color_image[1]);
+		d_image.copyTo(depth_image[1]);
 	}
 
 	for (int i=0; i<depth_image[cam_number].rows; ++i) {
