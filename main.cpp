@@ -120,6 +120,9 @@ void QR_code_detect_thread(int cam_number) {
 
 		zImage[cam_number] = new zbar::Image(gray_image1.cols, gray_image1.rows, "Y800", (uchar *)gray_image1.data, gray_image1.cols * gray_image1.rows);
 
+		// This is the slowest part of this function
+		//  with density==1, takes about 0.03 s on JetsonTX2
+		//  with density==2, takes about 0.015 s on JetsonTX2
 		int n = zbarScanner.scan(*zImage[cam_number]);
 		num_qr_codes[cam_number] = n;
 	}
@@ -348,7 +351,7 @@ int main(int argc, char* argv[]) {
 		t1.join();
 
 #ifdef USE_NETWORK_DISPLAY
-			t2.join();
+		t2.join();
 #endif
 
 #ifdef USE_ZBAR
