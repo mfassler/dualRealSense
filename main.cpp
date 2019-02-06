@@ -393,6 +393,7 @@ int main(int argc, char* argv[]) {
 					}
 				}
 			}
+			delete zImage[camNo];
 		}
 #endif // USE_ZBAR
 
