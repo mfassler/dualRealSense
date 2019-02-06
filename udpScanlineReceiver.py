@@ -4,18 +4,22 @@ import sys
 if sys.version_info[0] < 3:
     raise Exception("Must be using Python 3")
 
+import time
 import select
 import socket
 import struct
 import numpy as np
-import matplotlib.pyplot as plt
+import cv2 as cv
 
 
 DATA_PORT = 3125
+QR_CODE_PORT = 3126
 
 data_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 data_sock.bind(("0.0.0.0", DATA_PORT))
 
+qr_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+qr_sock.bind(("0.0.0.0", QR_CODE_PORT))
 
 
 depth_scale = 0.001
@@ -38,26 +42,14 @@ rotate_right = np.array([
     [np.cos(-theta), -np.sin(-theta)],
     [np.sin(-theta), np.cos(-theta)]])
 
-
-plt.ion()
-fig = plt.figure()
-ax = fig.add_subplot(111)
-plt.axis('equal')
-plt.ylim([0, 8.0])
-plt.xlim([-5.0, 5.0])
-
-line_range = np.arange(848*2)
-lineA, = ax.plot(left_xrange, np.zeros(848), 'r.')
-lineB, = ax.plot(right_xrange, np.zeros(848), 'b.')
-
-fig.canvas.draw()
 left_coords = np.empty((848, 2))
 right_coords = np.empty((848, 2))
 
 
+qrCodes = {}
 
 while True:
-    inputs, outputs, errors = select.select([data_sock], [], [])
+    inputs, outputs, errors = select.select([data_sock, qr_sock], [], [])
     for oneInput in inputs:
         if oneInput == data_sock:
 
@@ -81,7 +73,7 @@ while True:
                         cont=False
             data_sock.setblocking(1)
 
-            print(len(data))
+            #print(len(data))
             scanline = np.fromstring(data, dtype='<u2')
             left_scan_line = scanline[:848] * depth_scale
             left_coords[:,1] = left_scan_line
@@ -94,10 +86,72 @@ while True:
             aa = np.dot(rotate_left, left_coords.T).T
             bb = np.dot(rotate_right, right_coords.T).T
 
-            lineA.set_data(aa[:,0], aa[:,1])
-            lineB.set_data(bb[:,0], bb[:,1])
+        elif oneInput == qr_sock:
+            qrData = None
+            qr_sock.setblocking(0)
+            cont = True
+            while cont:
+                try:
+                    tmpQrData, addr = qr_sock.recvfrom(256)
+                except Exception as ee:
+                    #print(ee)
+                    cont = False
+                else:
+                    if tmpQrData:
+                        if qrData is not None:
+                            print('throwing away QR packet (GUI is too slow)')
+                        qrData = tmpQrData
+                    else:
+                        cont = False
+            qr_sock.setblocking(1)
+            print(len(qrData))
+            try:
+                camNo, qrId, x, y, z = struct.unpack('iifff', qrData)
+            except:
+                print('failed to parse QR data')
+            else:
+                print(camNo, qrId, x, y , z)
+                if (camNo == 0):
+                    qrAa = np.dot(rotate_left, [x, z]).T
+                    qrCodes[qrId] = (qrAa, time.time())
+                    #qrMarkersA.set_data(qrAa[0], qrAa[1])
+                else:
+                    qrBb = np.dot(rotate_right, [x, z]).T
+                    qrCodes[qrId] = (qrBb, time.time())
+                    #qrMarkersB.set_data(qrBb[0], qrBb[1])
 
-            fig.canvas.draw()
+        # Draw a real-time map on a white background
+        #  (each pixel represents 1cm x 1cm in real space)
+        amap = np.ones((800, 800, 3), np.uint8) * 255
+
+        for pt in aa:
+            x = int(round(pt[0]*100) + 400) # graphical coords, in cm
+            y = int(800 - round(pt[1]*100)) # graphical coords, in cm
+            if (5 <= x < 795) and (5 <= y < 795):
+                amap[y, x] = [255, 0, 0]
+
+        for pt in bb:
+            x = int(round(pt[0]*100) + 400) # graphical coords, in cm
+            y = int(800 - round(pt[1]*100)) # graphical coords, in cm
+            if (5 <= x < 795) and (5 <= y < 795):
+                amap[y, x] = [255, 0, 0]
+
+        for key, val in qrCodes.items():
+            pt = val[0]
+            ts = val[1]
+            if time.time() - ts < 1.0:
+                x = int(round(pt[0]*100) + 400) # graphical coords, in cm
+                y = int(800 - round(pt[1]*100)) # graphical coords, in cm
+                if (5 <= x < 795) and (5 <= y < 795):
+                    font = cv.FONT_HERSHEY_SIMPLEX
+                    cv.putText(amap, str(key), (x,y), font, 1, [0,0,0], 2)
+                    cv.circle(amap, (x,y), 3, [0,0,255], -1)
+
+        cv.imshow('a map', amap)
+        cv.waitKey(1)
+
+
+
 
 
 
