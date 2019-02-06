@@ -219,7 +219,22 @@ int main(int argc, char* argv[]) {
 			scanline_rx_addr[i].sin_port = htons(port);
 		}
 	}
-	printf("\n");
+
+	struct sockaddr_in *qr_code_rx_addr;
+	int number_of_qr_code_rxs = 0;
+	if (fs["qr_code_rx"].type() == cv::FileNode::SEQ) {
+		number_of_qr_code_rxs = fs["qr_code_rx"].size();
+		qr_code_rx_addr = (struct sockaddr_in*)malloc(number_of_qr_code_rxs* sizeof(struct sockaddr_in));
+		for (int i=0; i< number_of_qr_code_rxs; ++i) {
+			std::string addr = fs["qr_code_rx"][i]["addr"].string();
+			int port = fs["qr_code_rx"][i]["port"].real();
+			printf("Sending QR code data to: %s %d/udp\n", addr.c_str(), port);
+
+			qr_code_rx_addr[i].sin_family = AF_INET;
+			qr_code_rx_addr[i].sin_addr.s_addr = inet_addr(addr.c_str());
+			qr_code_rx_addr[i].sin_port = htons(port);
+		}
+	}
 
 
 	bool USE_LOCAL_DISPLAY = false;
@@ -230,6 +245,7 @@ int main(int argc, char* argv[]) {
 	}
 
 
+	printf("\n");
 	fs.release();
 
 	// ##########################################################
@@ -357,6 +373,11 @@ int main(int argc, char* argv[]) {
 #ifdef USE_ZBAR
 		t3.join();
 		t4.join();
+		struct qrCodeThing {
+			int cam_number;
+			int qrId;
+			float x,y,z;
+		};
 
 		for (int camNo=0; camNo<2; ++camNo) {
 			if (num_qr_codes[camNo] > 0) {
@@ -366,31 +387,48 @@ int main(int argc, char* argv[]) {
 				{
 					//printf("type: %s, data: %s\n", symbol->get_type_name(), symbol->get_data());
 					std::cout << "Type: " << symbol->get_type_name() << std::endl;
-					std::cout << "Data: " << symbol->get_data() << std::endl;
 					float avg_point[3] = {0,0,0};
 					bool _valid = true;
-					for(int j=0; j < symbol->get_location_size(); ++j) {
-						float pixel[2] = {symbol->get_location_x(j), symbol->get_location_y(j)};
-						cv::Point pt(pixel[0], pixel[1]);
+					struct qrCodeThing qrCode;
+					if (symbol->get_type_name() == "QR-Code") {
 
-						cv::circle(color_image[camNo], pt, 6, cv::Scalar(0,0,255), -1);
+						std::cout << "Data: " << symbol->get_data() << std::endl;
+						for(int j=0; j < symbol->get_location_size(); ++j) {
+							float pixel[2] = {symbol->get_location_x(j), symbol->get_location_y(j)};
+							cv::Point pt(pixel[0], pixel[1]);
 
-						float point[3];
+							cv::circle(color_image[camNo], pt, 6, cv::Scalar(0,0,255), -1);
 
-						uint16_t _d = depth_image[camNo].at<uint16_t>(pixel[1], pixel[0]);
-						float depth = _d * depth_scale;
-						if (depth < 8.0) {
-							rs2_deproject_pixel_to_point(point, &rgb_intrs[camNo], pixel, depth);
-							avg_point[0] += point[0] / symbol->get_location_size();;
-							avg_point[1] += point[1] / symbol->get_location_size();;
-							avg_point[2] += point[2] / symbol->get_location_size();;
-						} else {
-							_valid = false;
+							float point[3];
+
+							uint16_t _d = depth_image[camNo].at<uint16_t>(pixel[1], pixel[0]);
+							float depth = _d * depth_scale;
+							if (depth < 8.0 && depth >0.2) {
+								rs2_deproject_pixel_to_point(point, &rgb_intrs[camNo], pixel, depth);
+								avg_point[0] += point[0] / symbol->get_location_size();;
+								avg_point[1] += point[1] / symbol->get_location_size();;
+								avg_point[2] += point[2] / symbol->get_location_size();;
+							} else {
+								_valid = false;
+							}
 						}
 					}
-					if (_valid) {
+					//std::cout << "prefix: " << symbol->get_data().substr(0, 7) << std::endl;
+					if (_valid && symbol->get_data().substr(0,7) == "ATLAB: ") {
+						qrCode.cam_number = camNo;
+						qrCode.qrId = std::stoi(symbol->get_data().substr(7));
+						qrCode.x = avg_point[0];
+						qrCode.y = avg_point[1];
+						qrCode.z = avg_point[2];
 						printf("%f, %f, %f \n", avg_point[0], avg_point[1], avg_point[2]);
+
+						unsigned char * buf = (unsigned char*) &qrCode;
+						for (int i=0; i<number_of_qr_code_rxs; ++i) {
+							sendto(udp_sockfd, buf, sizeof(qrCode), 0,
+								(const struct sockaddr*) &qr_code_rx_addr[i], sizeof(struct sockaddr));
+						}
 					}
+
 				}
 			}
 			delete zImage[camNo];
@@ -424,14 +462,14 @@ int main(int argc, char* argv[]) {
 				cv::imshow("RealSense", out_image);
 				cv::waitKey(1);
 			}
-
+/*
 			ts1 = gettimeofday_as_double();
 			float tFrame = ts1 - ts0;
 			ts0 = ts1;
 
 			fps = 0.667 * fps + 0.333 * (1.0 / tFrame);
 			printf("%.1f \n", fps);
-
+*/
 		}
 	}
 
