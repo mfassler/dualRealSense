@@ -100,19 +100,12 @@ void get_frame_thread(rs2::frameset frames, int cam_number) {
 
 #ifdef USE_ZBAR
 
+zbar::ImageScanner zbarScanner0;
+zbar::ImageScanner zbarScanner1;
 zbar::Image *zImage[2];
-int num_qr_codes[2];
+int num_qr_codes[2] = {0,0};
 
 void QR_code_detect_thread(int cam_number) {
-	zbar::ImageScanner zbarScanner;
-	zbarScanner.set_config(zbar::ZBAR_NONE, zbar::ZBAR_CFG_ENABLE, 0);
-	zbarScanner.set_config(zbar::ZBAR_QRCODE, zbar::ZBAR_CFG_ENABLE, 1);
-
-	// TODO:  not entirely sure if I'm doing this right, or what the best setting is:
-	// (I'm pretty sure that 1 is highest density/slowest speed)
-	zbarScanner.set_config(zbar::ZBAR_NONE, zbar::ZBAR_CFG_X_DENSITY, 1);
-	zbarScanner.set_config(zbar::ZBAR_NONE, zbar::ZBAR_CFG_Y_DENSITY, 1);
-
 
 	if (out_image.cols > 10 && out_image.rows > 10) {
 		cv::Mat gray_image1;
@@ -123,8 +116,15 @@ void QR_code_detect_thread(int cam_number) {
 		// This is the slowest part of this function
 		//  with density==1, takes about 0.03 s on JetsonTX2
 		//  with density==2, takes about 0.015 s on JetsonTX2
-		int n = zbarScanner.scan(*zImage[cam_number]);
+		int n=0;
+		if (cam_number == 0) {
+			n = zbarScanner0.scan(*zImage[cam_number]);
+		} else {
+			n = zbarScanner1.scan(*zImage[cam_number]);
+		}
 		num_qr_codes[cam_number] = n;
+	} else {
+		num_qr_codes[cam_number] = 0;
 	}
 }
 #endif // USE_ZBAR
@@ -345,6 +345,23 @@ int main(int argc, char* argv[]) {
 	double ts0 = gettimeofday_as_double();
 	double ts1;
 
+#ifdef USE_ZBAR
+	zbarScanner0.set_config(zbar::ZBAR_NONE, zbar::ZBAR_CFG_ENABLE, 0);
+	zbarScanner0.set_config(zbar::ZBAR_QRCODE, zbar::ZBAR_CFG_ENABLE, 1);
+	zbarScanner1.set_config(zbar::ZBAR_NONE, zbar::ZBAR_CFG_ENABLE, 0);
+	zbarScanner1.set_config(zbar::ZBAR_QRCODE, zbar::ZBAR_CFG_ENABLE, 1);
+
+	// TODO:  not entirely sure if I'm doing this right, or what the best setting is:
+	// (I'm pretty sure that 1 is highest density/slowest speed)
+	zbarScanner0.set_config(zbar::ZBAR_NONE, zbar::ZBAR_CFG_X_DENSITY, 2);
+	zbarScanner0.set_config(zbar::ZBAR_NONE, zbar::ZBAR_CFG_Y_DENSITY, 2);
+	zbarScanner1.set_config(zbar::ZBAR_NONE, zbar::ZBAR_CFG_X_DENSITY, 2);
+	zbarScanner1.set_config(zbar::ZBAR_NONE, zbar::ZBAR_CFG_Y_DENSITY, 2);
+
+	//zbarScanner0.enable_cache(true);
+	//zbarScanner1.enable_cache(true);
+#endif // USE_ZBAR
+
 	while (true) {
 
 #ifdef USE_NETWORK_DISPLAY
@@ -460,6 +477,7 @@ int main(int argc, char* argv[]) {
 
 			if (USE_LOCAL_DISPLAY) {
 				cv::imshow("RealSense", out_image);
+				cv::moveWindow("RealSense", 112, 0);
 				cv::waitKey(1);
 			}
 /*
