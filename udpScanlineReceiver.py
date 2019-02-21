@@ -48,6 +48,15 @@ right_coords = np.empty((848, 2))
 
 qrCodes = {}
 
+#avoidance_areas = np.ones((800, 800, 3), np.uint8) * 255
+#avoidance_areas = cv.imread('avoidance_areas/avoidance_areas.png')
+avoidance_areas = cv.imread('avoidance_areas/very_large.png')
+
+amap = np.copy(avoidance_areas)
+cv.imshow('a map', amap)
+cv.moveWindow('a map', 560, 0)
+cv.waitKey(1)
+
 while True:
     inputs, outputs, errors = select.select([data_sock, qr_sock], [], [])
     for oneInput in inputs:
@@ -122,7 +131,7 @@ while True:
 
         # Draw a real-time map on a white background
         #  (each pixel represents 1cm x 1cm in real space)
-        amap = np.ones((800, 800, 3), np.uint8) * 255
+        amap = np.copy(avoidance_areas)
 
         for pt in aa:
             x = int(round(pt[0]*100) + 400) # graphical coords, in cm
