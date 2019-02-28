@@ -1,7 +1,7 @@
 ## Build Options:
 NETWORK_DISPLAY = 0
 QR_CODES = 0
-
+USE_ODOMETRY = 0
 
 ######
 ######   What are we building?
@@ -28,6 +28,10 @@ ifeq ($(NETWORK_DISPLAY), 1)
 CPPFLAGS += -DUSE_NETWORK_DISPLAY
 endif
 
+ifeq ($(USE_ODOMETRY), 1)
+OBJECTS += Odometry.o
+CPPFLAGS += -DUSE_ODOMETRY
+endif
 
 LD = g++
 

@@ -33,6 +33,11 @@
 #include <zbar.h>
 #endif // USE_ZBAR
 
+#ifdef USE_ODOMETRY
+#include "Odometry.hpp"
+#endif // USE_ODOMETRY
+
+
 #include "UdpJpegSenderThread.hpp"
 
 
@@ -58,6 +63,27 @@ void printTimeofday(std::string prefix) {
 	printf("%s%ld.%06ld\n", prefix.c_str(), tv.tv_sec, tv.tv_usec);
 }
 
+
+#ifdef USE_ODOMETRY
+Odometry* odoLeft;
+Odometry* odoRight;
+void odo_thread_left() {
+	if (color_image[0].rows > 10 && color_image[0].cols > 10) {
+		odoLeft->opticalFlow(color_image[0], depth_image[0]);
+		odoLeft->updatePointCloud();
+		//odoLeft->sendPointcloudOverNetwork();  // only for t-shooting, visualization
+		odoLeft->findOdometry(0);
+	}
+}
+void odo_thread_right() {
+	if (color_image[1].rows > 10 && color_image[1].cols > 10) {
+		odoRight->opticalFlow(color_image[1], depth_image[1]);
+		odoRight->updatePointCloud();
+		//odoRight->sendPointcloudOverNetwork();  // only for t-shooting, visualization
+		odoRight->findOdometry(1);
+	}
+}
+#endif // USE_ODOMETRY
 
 
 void get_frame_thread(rs2::frameset frames, int cam_number) {
@@ -202,6 +228,7 @@ int main(int argc, char* argv[]) {
 	inet_ntop(AF_INET, &(jpgRxAddr.sin_addr), buffer, 24);
 	printf("\nSending network video to: %s %d/udp\n\n", buffer, ntohs(jpgRxAddr.sin_port));
 #endif // USE_NETWORK_DISPLAY
+
 
 
 	struct sockaddr_in *scanline_rx_addr;
@@ -362,11 +389,22 @@ int main(int argc, char* argv[]) {
 	//zbarScanner1.enable_cache(true);
 #endif // USE_ZBAR
 
+
+#ifdef USE_ODOMETRY
+	odoLeft = new Odometry(rgb_intrinsics_0a, depth_scale, udp_sockfd);
+	odoRight = new Odometry(rgb_intrinsics_1, depth_scale, udp_sockfd);
+#endif // USE_ODOMETRY
+
 	while (true) {
 
 #ifdef USE_NETWORK_DISPLAY
 		std::thread t2(network_jpg_sender_thread, udp_sockfd, out_image, jpgRxAddr);
 #endif
+
+#ifdef USE_ODOMETRY
+		std::thread odo_t0(odo_thread_left);
+		std::thread odo_t1(odo_thread_right);
+#endif // USE_ODOMETRY
 
 #ifdef USE_ZBAR
 		std::thread t3(QR_code_detect_thread, 0);
@@ -451,6 +489,18 @@ int main(int argc, char* argv[]) {
 			delete zImage[camNo];
 		}
 #endif // USE_ZBAR
+
+#ifdef USE_ODOMETRY
+		odo_t0.join();
+		odo_t1.join();
+		odoLeft->draw_lines_and_stuff(color_image[0]);
+		odoRight->draw_lines_and_stuff(color_image[1]);
+
+		printf("LEFT: X: %.03f m/s,  Z: %.03f m/s;    RIGHT: X: %.03f m/s,  Z: %.03f m/s\n",
+			odoLeft->_speedX, odoLeft->_speedZ, odoRight->_speedX, odoRight->_speedZ
+		);
+#endif // USE_ODOMETRY
+
 
 		if (color_image[0].rows > 10 && color_image[0].rows == color_image[1].rows) {
 
